@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+from pathlib import Path
 from snowflake.snowpark.functions import col
 
 st.title("Customize Your Smoothie :cup_with_straw:")
@@ -9,8 +10,18 @@ name_on_order = st.text_input("Name on Smoothie")
 st.write("The name on your smoothie will be: ", name_on_order)
 
 try:
+    # Resolve key path relative to this file so launches from other folders still work.
+    snowflake_cfg = dict(st.secrets["connections"]["snowflake"])
+    key_path = Path(snowflake_cfg["private_key_file"])
+    if not key_path.is_absolute():
+        key_path = (Path(__file__).resolve().parent / key_path).resolve()
+    if not key_path.exists():
+        raise FileNotFoundError(
+            f"Snowflake private key file was not found at: {key_path}")
+    snowflake_cfg["private_key_file"] = str(key_path)
+
     # Establish connection to Snowflake via Streamlit secrets
-    cnx = st.connection("snowflake", type="snowflake")
+    cnx = st.connection("snowflake", type="snowflake", **snowflake_cfg)
     session = cnx.session()
 
     # Retrieve fruit options from Snowflake
