@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import pandas as pd
 from snowflake.snowpark.functions import col
 
 st.title("Customize Your Smoothie :cup_with_straw:")
@@ -16,12 +17,17 @@ try:
 
     # Retrieve fruit options from Snowflake
     my_dataframe = session.table("smoothies.public.fruit_options").select(
-        col("FRUIT_NAME")).collect()
+        col("FRUIT_NAME"), col('SEARCH_ON'))  # .collect()
+
+    # my_dataframe to pandas
+    pd_df = my_dataframe.to_pandas()
+    # st.dataframe(pd_df)
+    # st.stop()
 
     # Multi-select for choosing ingredients
     ingredients_list = st.multiselect(
         "Choose up to 5 ingredients:",
-        [row["FRUIT_NAME"] for row in my_dataframe],
+        pd_df["FRUIT_NAME"].tolist(),
         max_selections=5,
     )
 
@@ -29,11 +35,18 @@ try:
     if ingredients_list:
         # Join selected ingredients into a single string
         ingredients_string = ' '.join(ingredients_list)
+
         for fruit_chosen in ingredients_list:
             try:
+
+                search_on = pd_df.loc[pd_df['FRUIT_NAME']
+                                      == fruit_chosen, 'SEARCH_ON'].iloc[0]
+                st.write('The search value for ',
+                         fruit_chosen, ' is ', search_on, '.')
+
                 # Make API request to get details about each fruit
                 fruityvice_response = requests.get(
-                    "https://fruityvice.com/api/fruit/" + fruit_chosen)
+                    "https://fruityvice.com/api/fruit/" + search_on)
                 # Raise an error for bad responses (4xx or 5xx)
                 fruityvice_response.raise_for_status()
 
