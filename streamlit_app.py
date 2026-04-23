@@ -1,7 +1,27 @@
 import streamlit as st
 import requests
 import pandas as pd
+from urllib.parse import quote
 from snowflake.snowpark.functions import col
+
+
+def build_lookup_candidates(search_on, fruit_name):
+    """Build a small ordered list of lookup values to try against Fruityvice."""
+    candidates = []
+    for value in [search_on, fruit_name]:
+        if value is None:
+            continue
+        cleaned = str(value).strip()
+        if cleaned and cleaned not in candidates:
+            candidates.append(cleaned)
+
+        # Fruityvice often expects the core fruit name without alias in parentheses.
+        without_alias = cleaned.split(" (")[0].strip()
+        if without_alias and without_alias not in candidates:
+            candidates.append(without_alias)
+
+    return candidates
+
 
 st.title("Customize Your Smoothie :cup_with_straw:")
 st.write("""Choose the fruits you want in your custom smoothie!""")
@@ -38,17 +58,32 @@ try:
 
         for fruit_chosen in ingredients_list:
             try:
-
-                search_on = pd_df.loc[pd_df['FRUIT_NAME']
-                                      == fruit_chosen, 'SEARCH_ON'].iloc[0]
+                raw_search_on = pd_df.loc[pd_df['FRUIT_NAME']
+                                          == fruit_chosen, 'SEARCH_ON'].iloc[0]
+                search_on = raw_search_on if pd.notna(
+                    raw_search_on) else fruit_chosen
                 st.write('The search value for ',
                          fruit_chosen, ' is ', search_on, '.')
 
                 # Make API request to get details about each fruit
-                fruityvice_response = requests.get(
-                    "https://fruityvice.com/api/fruit/" + search_on)
-                # Raise an error for bad responses (4xx or 5xx)
-                fruityvice_response.raise_for_status()
+                fruityvice_response = None
+                last_request_error = None
+                for lookup_value in build_lookup_candidates(search_on, fruit_chosen):
+                    request_url = "https://fruityvice.com/api/fruit/" + \
+                        quote(lookup_value, safe="")
+                    try:
+                        response = requests.get(request_url, timeout=10)
+                        response.raise_for_status()
+                        fruityvice_response = response
+                        break
+                    except requests.exceptions.RequestException as request_error:
+                        last_request_error = request_error
+
+                if fruityvice_response is None and last_request_error is not None:
+                    raise last_request_error
+                if fruityvice_response is None:
+                    raise ValueError(
+                        f"No Fruityvice response received for {fruit_chosen}")
 
                 if fruityvice_response.status_code == 200:
                     fv_df = st.dataframe(
