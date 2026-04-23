@@ -1,8 +1,5 @@
 import streamlit as st
 import requests
-from pathlib import Path
-from cryptography.hazmat.primitives import serialization
-from snowflake.snowpark import Session
 from snowflake.snowpark.functions import col
 
 st.title("Customize Your Smoothie :cup_with_straw:")
@@ -12,40 +9,10 @@ name_on_order = st.text_input("Name on Smoothie")
 st.write("The name on your smoothie will be: ", name_on_order)
 
 try:
-    snowflake_cfg = dict(st.secrets["connections"]["snowflake"])
-
-    # Use key text from secrets in cloud, and key files for local development.
-    if "private_key" in snowflake_cfg and str(snowflake_cfg["private_key"]).strip():
-        private_key_pem = str(snowflake_cfg.pop("private_key"))
-    elif "private_key_file" in snowflake_cfg:
-        key_path = Path(str(snowflake_cfg.pop("private_key_file")))
-        if not key_path.is_absolute():
-            key_path = (Path(__file__).resolve().parent / key_path).resolve()
-        if not key_path.exists():
-            raise FileNotFoundError(
-                "Snowflake private key file was not found. "
-                "For Streamlit Cloud, set [connections.snowflake].private_key in secrets. "
-                f"Checked path: {key_path}"
-            )
-        private_key_pem = key_path.read_text(encoding="utf-8")
-    else:
-        raise ValueError(
-            "Missing Snowflake private key. Provide either 'private_key' or 'private_key_file' "
-            "under [connections.snowflake] in secrets."
-        )
-
-    passphrase = snowflake_cfg.pop("private_key_passphrase", None)
-    private_key = serialization.load_pem_private_key(
-        private_key_pem.encode("utf-8"),
-        password=passphrase.encode("utf-8") if passphrase else None,
-    )
-    snowflake_cfg["private_key"] = private_key.private_bytes(
-        encoding=serialization.Encoding.DER,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    )
-
-    session = Session.builder.configs(snowflake_cfg).create()
+    # Use st.connection() as per Streamlit documentation
+    # This handles both private_key_file (local) and private_key (cloud) automatically
+    conn = st.connection("snowflake")
+    session = conn.session()
 
     # Retrieve fruit options from Snowflake
     my_dataframe = session.table("smoothies.public.fruit_options").select(
